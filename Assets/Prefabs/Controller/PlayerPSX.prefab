@@ -6427,6 +6427,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5fded17ba890b2345bc6cd881507f51c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _isSetup: 0
+  _prefabId: -2147483648
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
   playerCamera: {fileID: 8914437171746874744}
   cameraShake: {fileID: 882813632532649102}
   inventoryManager: {fileID: 2863717446983382914}
@@ -6440,6 +6449,7 @@ MonoBehaviour:
   smoothSpeedRotConst: 5
   targetWeightRotConst: 0
   aimRestingPosition: {x: 0, y: 45, z: 0}
+  aimPitchSendInterval: 0.05
 --- !u!114 &2863717446983382914
 MonoBehaviour:
   m_ObjectHideFlags: 0

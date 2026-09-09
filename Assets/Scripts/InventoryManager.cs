@@ -19,13 +19,38 @@ public class InventoryManager : MonoBehaviour
         }
     }  
 
+    public int GetCurrentWeaponIndex()
+    {
+        return playerInventory.allWeapons.IndexOf(GetCurrentWeapon());
+    }
+
+    public Weapon EquipWeaponByInventoryIndex(int weaponIndex)
+    {
+        if (weaponIndex < 0 || weaponIndex >= playerInventory.allWeapons.Count)
+            return null;
+
+        GameObject weapon = playerInventory.allWeapons[weaponIndex];
+        if (!activeInventory.Contains(weapon))
+            activeInventory.Add(weapon);
+
+        currentIndex = activeInventory.IndexOf(weapon);
+        UpdateWeaponActivation();
+        return weapon.GetComponent<Weapon>();
+    }
+
     public void Initialize()
     {
+        activeInventory.Clear();
+        currentIndex = 0;
+
+        foreach (GameObject weapon in playerInventory.allWeapons)
+            weapon.SetActive(false);
+
         if (playerInventory.allWeapons.Count > 0)
         {
             GameObject firstWeapon = playerInventory.allWeapons[0];
-            firstWeapon.SetActive(true);
             activeInventory.Add(firstWeapon);
+            UpdateWeaponActivation();
             //hud.CreateWeaponUIElement(firstWeapon, firstWeapon.GetComponent<Weapon>().wep_data.name, 0);
         }
     }
@@ -41,7 +66,8 @@ public class InventoryManager : MonoBehaviour
                 if (!activeInventory.Contains(weaponToAdd))
                 {
                     activeInventory.Add(weaponToAdd);
-                    int index = activeInventory.Count - 1;
+                    currentIndex = activeInventory.Count - 1;
+                    UpdateWeaponActivation();
                     //hud.CreateWeaponUIElement(weaponToAdd, weaponToAdd.GetComponent<Weapon>().wep_data.name, index);
                     //hud.RefreshWeaponUILabels(activeInventory);
                     Debug.Log($"[Index Pickup] Added {weaponToAdd.name} to inventory.");
@@ -65,7 +91,8 @@ public class InventoryManager : MonoBehaviour
         if (!activeInventory.Contains(weapon))
         {
             activeInventory.Add(weapon);
-            int index = activeInventory.Count - 1;
+            currentIndex = activeInventory.Count - 1;
+            UpdateWeaponActivation();
             //hud.CreateWeaponUIElement(weapon, weapon.GetComponent<Weapon>().wep_data.name, index);
             //hud.RefreshWeaponUILabels(activeInventory);
             Debug.Log($"[Ground Pickup] Added {weapon.name} to inventory");

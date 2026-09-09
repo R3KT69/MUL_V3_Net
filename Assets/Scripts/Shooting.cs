@@ -59,6 +59,15 @@ public class Shooting : NetworkBehaviour
         SmoothWeightTransition();
         inventoryManager.AddWeaponByIndex();
 
+        for (int i = 0; i < playerInventory.allWeapons.Count && i < 8; i++)
+        {
+            if (Input.GetKeyDown(KeyCode.Alpha1 + i))
+            {
+                inventoryManager.EquipWeaponByInventoryIndex(i);
+                RequestWeaponSwitchServerRpc(i);
+            }
+        }
+
         // Reload Mechanic
         if (!animator.GetBool("isAiming"))
         {
@@ -78,6 +87,9 @@ public class Shooting : NetworkBehaviour
             if (Input.GetKeyDown(KeyCode.E)) inventoryManager.SwitchWeapon(+1);
             else if (Input.GetKeyDown(KeyCode.Q)) inventoryManager.SwitchWeapon(-1);
             if (Input.GetKeyDown(KeyCode.F)) inventoryManager.DropWeapon(transform);
+
+            if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Q))
+                RequestWeaponSwitchServerRpc(inventoryManager.GetCurrentWeaponIndex());
         }
     }
 
@@ -90,8 +102,6 @@ public class Shooting : NetworkBehaviour
 
         if (audioSource != null) audioSource.PlayOneShot(currentWeapon.wep_sfx);
 
-        RequestShootVisualsServerRpc();
-        StartCoroutine(RecoilRoutine());
         HandleShootingType();
 
         DebugSpreadCone(currentWeapon.shoot_point.position, playerCamera.transform.forward, currentWeapon.wep_data.spreadAngle);
@@ -122,12 +132,9 @@ public class Shooting : NetworkBehaviour
                 yield break;
             }
 
-            StartCoroutine(RecoilRoutine());
-
             if (audioSource != null)
                 audioSource.PlayOneShot(currentWeapon.wep_sfx);
 
-            RequestShootVisualsServerRpc();
             ShootSingle();
             yield return new WaitForSeconds(fireDelay);
         }
@@ -136,21 +143,51 @@ public class Shooting : NetworkBehaviour
     }
 
     [ServerRpc]
-    void RequestShootVisualsServerRpc()
+    void RequestWeaponSwitchServerRpc(int weaponIndex)
     {
-        PlayShootVisualsObserversRpc();
+        ApplyWeaponSwitchObserversRpc(weaponIndex);
     }
 
     [ObserversRpc(excludeOwner: true)]
-    void PlayShootVisualsObserversRpc()
+    void ApplyWeaponSwitchObserversRpc(int weaponIndex)
     {
-        Weapon currentWeapon = inventoryManager.GetCurrentWeapon()?.GetComponent<Weapon>();
+        inventoryManager.EquipWeaponByInventoryIndex(weaponIndex);
+    }
+
+    [ServerRpc]
+    void RequestShootVisualsServerRpc(int weaponIndex, Vector3 shootPosition, Vector3 hitPoint, bool playWeaponEffects)
+    {
+        PlayShootVisualsObserversRpc(weaponIndex, shootPosition, hitPoint, playWeaponEffects);
+    }
+
+    [ObserversRpc(excludeOwner: true)]
+    void PlayShootVisualsObserversRpc(int weaponIndex, Vector3 shootPosition, Vector3 hitPoint, bool playWeaponEffects)
+    {
+        Weapon currentWeapon = inventoryManager.EquipWeaponByInventoryIndex(weaponIndex);
         if (currentWeapon == null) return;
 
-        currentWeapon.TriggerMuzzleEffects();
+        if (playWeaponEffects)
+        {
+            currentWeapon.TriggerMuzzleEffects();
+            currentWeapon.TriggerBulletEject();
+        }
 
-        if (audioSource != null)
+        CreateBulletTrail(currentWeapon, shootPosition, hitPoint);
+
+        if (playWeaponEffects && audioSource != null)
             audioSource.PlayOneShot(currentWeapon.wep_sfx);
+    }
+
+    [ServerRpc]
+    void RequestRecoilServerRpc()
+    {
+        PlayRecoilObserversRpc();
+    }
+
+    [ObserversRpc(excludeOwner: true)]
+    void PlayRecoilObserversRpc()
+    {
+        StartCoroutine(RecoilRoutine());
     }
 
     void HandleShootingType() // Sets Weapon-Type specific behaviour of shooting, like shotgun, pistol, etc. (Auto weapons are not managed here)
@@ -194,8 +231,8 @@ public class Shooting : NetworkBehaviour
 
 
         Debug.DrawLine(shootPoint.position, hitPoint, Color.red, 2f);
-        GameObject trailObj = Instantiate(currentWeapon.bulletTrail, shootPoint.position, Quaternion.identity);
-        StartCoroutine(AnimateTrail(trailObj.GetComponent<TrailRenderer>(), hitPoint));
+        CreateBulletTrail(currentWeapon, shootPoint.position, hitPoint);
+        RequestShootVisualsServerRpc(GetWeaponInventoryIndex(currentWeapon), shootPoint.position, hitPoint, true);
         //hud.RefreshWeaponAmmo(currentWeapon.gameObject);
     }
 
@@ -207,6 +244,8 @@ public class Shooting : NetworkBehaviour
             currentWeapon.TriggerMuzzleEffects();
             currentWeapon.TriggerBulletEject();
             cameraShake.TriggerShake(0.2f);
+            StartCoroutine(RecoilRoutine());
+            RequestRecoilServerRpc();
         }
         Debug.Log($"Current: {currentWeapon.currentAmmo} | Max: {currentWeapon.maxAmmo} | Total: {currentWeapon.totalAmmo}");
     }
@@ -276,8 +315,8 @@ public class Shooting : NetworkBehaviour
             GunActionUponHit(ray, currentWeapon, out hitPoint);
 
             Debug.DrawLine(shootPoint.position, hitPoint, Color.yellow, 1.5f);
-            GameObject trailObj = Instantiate(currentWeapon.bulletTrail, shootPoint.position, Quaternion.identity);
-            StartCoroutine(AnimateTrail(trailObj.GetComponent<TrailRenderer>(), hitPoint));
+            CreateBulletTrail(currentWeapon, shootPoint.position, hitPoint);
+            RequestShootVisualsServerRpc(GetWeaponInventoryIndex(currentWeapon), shootPoint.position, hitPoint, i == 0);
         }
 
         //hud.RefreshWeaponAmmo(currentWeapon.gameObject);
@@ -457,6 +496,23 @@ public class Shooting : NetworkBehaviour
         trail.transform.position = hitPoint;
         yield return new WaitForSeconds(trail.time);
         if (trail != null) Destroy(trail.gameObject);
+    }
+
+    void CreateBulletTrail(Weapon weapon, Vector3 start, Vector3 hitPoint)
+    {
+        if (weapon.bulletTrail == null) return;
+
+        GameObject trailObj = Instantiate(weapon.bulletTrail, start, Quaternion.identity);
+        TrailRenderer trail = trailObj.GetComponent<TrailRenderer>();
+        if (trail != null)
+            StartCoroutine(AnimateTrail(trail, hitPoint));
+        else
+            Destroy(trailObj);
+    }
+
+    int GetWeaponInventoryIndex(Weapon weapon)
+    {
+        return playerInventory.allWeapons.IndexOf(weapon.gameObject);
     }
     void DeployDecal(RaycastHit hitInfo) // Instantiates a decal at hit point
     {
